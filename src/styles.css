@@ -271,8 +271,8 @@ button { color: inherit; }
 
 .feed-phone .phone-screen { background: white; color: #15171d; }
 .feed-phone .status-bar { color: #15171d; text-shadow: none; }
-.feed-media-slot { position: absolute; left: 0; right: 0; top: 21%; height: 57.7%; overflow: hidden; background: #111; }
-.feed-media-slot.vertical-feed-media-slot { height: 82.05%; }
+.feed-media-slot { position: absolute; left: 0; right: 0; top: 21%; height: auto; aspect-ratio: 4 / 5; overflow: hidden; background: #111; }
+.feed-media-slot.vertical-feed-media-slot { height: 82.05%; aspect-ratio: auto; }
 .feed-overlay { color: #17191e; text-shadow: none; }
 .feed-appbar { position: absolute; top: 7%; left: 4.5%; right: 4.5%; display: flex; align-items: center; justify-content: space-between; }
 .feed-appbar > svg { width: 25px; height: 25px; }
