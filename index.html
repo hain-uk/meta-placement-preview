@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate" />
+    <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate" />
+    <meta name="bingbot" content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate" />
     <meta name="description" content="Upload an image or video, preview Meta mobile placements, check safe areas and export a PNG mockup." />
     <meta property="og:title" content="Meta Placement Preview" />
     <meta property="og:description" content="Upload. Check. Export. Preview images and video across Meta mobile placements." />
@@ -16,8 +18,15 @@
     <meta name="twitter:description" content="Upload. Check. Export. Preview images and video across Meta mobile placements." />
     <meta name="twitter:image" content="https://hain-uk.github.io/meta-placement-preview/og.png" />
     <title>Meta Placement Preview</title>
+    <script>
+      try {
+        if (localStorage.getItem('placement-theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch {}
+    </script>
   </head>
-  <body>
+  <body data-nosnippet>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -11,6 +11,7 @@ import {
   ImagePlus,
   Menu,
   MessageCircle,
+  Moon,
   MoreHorizontal,
   Pause,
   Play,
@@ -22,7 +23,7 @@ import {
   Share2,
   Signal,
   Smartphone,
-  Sparkles,
+  Sun,
   Trash2,
   UploadCloud,
   UserRound,
@@ -47,6 +48,9 @@ type AssetKind = 'image' | 'video';
 type PlacementId = 'ig-reel' | 'ig-story' | 'ig-feed' | 'fb-feed';
 type PreviewMode = 'phone' | 'creative';
 type FitMode = 'fit' | 'fill';
+type Theme = 'dark' | 'light';
+
+const THEME_STORAGE_KEY = 'placement-theme';
 
 type CreativeAsset = {
   id: string;
@@ -200,6 +204,13 @@ function FeedOverlay({ platform, businessName, caption, cta, promoted }: { platf
 }
 
 export default function Home() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
   const [assets, setAssets] = useState<CreativeAsset[]>([SAMPLE]);
   const [selectedId, setSelectedId] = useState(SAMPLE.id);
   const [placementId, setPlacementId] = useState<PlacementId>('ig-reel');
@@ -228,6 +239,17 @@ export default function Home() {
     }
     return { ratio: placement.recommendedRatio, label: placement.recommendedLabel, width: placement.canvasWidth, height: placement.canvasHeight };
   }, [placement, selected?.kind]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'light') root.setAttribute('data-theme', 'light');
+    else root.removeAttribute('data-theme');
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // The theme still works when storage is unavailable.
+    }
+  }, [theme]);
 
   useEffect(() => () => { objectUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
@@ -328,9 +350,15 @@ export default function Home() {
   return (
     <main className="app-root">
       <header className="product-header">
-        <a className="brand" href="#top" aria-label="Meta Placement Preview home"><span className="brand-mark"><Smartphone size={19} /><Sparkles size={11} /></span><span><strong>Placement Preview</strong><small>for Meta</small></span></a>
+        <a className="brand" href="#top" aria-label="Meta Placement Preview home"><span className="brand-mark"><img src={`${PUBLIC_BASE}meta-logo.svg`} alt="" /></span><span><strong>Placement Preview</strong><small>for Meta</small></span></a>
         <div className="privacy-note"><span className="privacy-dot" />Files stay in your browser</div>
-        <a className="help-link" href="#how-it-works"><CircleHelp size={17} />How it works</a>
+        <div className="header-actions">
+          <button className="theme-toggle" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          </button>
+          <a className="help-link" href="#how-it-works"><CircleHelp size={17} />How it works</a>
+        </div>
       </header>
 
       <div className="app-layout" id="top">
@@ -397,6 +425,7 @@ export default function Home() {
       </div>
 
       <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed adapts by media type</h3><p>Static Feed uses 4:5 at 1440 × 1800. Instagram Feed video uses Meta’s separate 9:16 at 1080 × 1920 target.</p></article><article><span>03</span><h3>Fit or Fill</h3><p>Fit keeps the whole source and may show empty bands. Fill covers the Meta canvas and clearly reports any crop.</p></article></div></section>
+      <footer className="site-footer"><span>Unofficial tool - not affiliated with or endorsed by Meta.</span><span>Uploads stay in your browser.</span></footer>
     </main>
   );
 }
