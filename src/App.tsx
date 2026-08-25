@@ -215,7 +215,7 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState(SAMPLE.id);
   const [placementId, setPlacementId] = useState<PlacementId>('ig-reel');
   const [previewMode, setPreviewMode] = useState<PreviewMode>('phone');
-  const [fitMode, setFitMode] = useState<FitMode>('fit');
+  const [fitMode, setFitMode] = useState<FitMode>('fill');
   const [safeZone, setSafeZone] = useState(false);
   const [promoted, setPromoted] = useState(true);
   const [businessName, setBusinessName] = useState('Your Business');
@@ -239,6 +239,7 @@ export default function Home() {
     }
     return { ratio: placement.recommendedRatio, label: placement.recommendedLabel, width: placement.canvasWidth, height: placement.canvasHeight };
   }, [placement, selected?.kind]);
+  const ratioMismatch = Boolean(selected?.width && selected?.height && Math.abs((selected.width / selected.height) - canvasSpec.ratio) / canvasSpec.ratio >= 0.025);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -250,6 +251,8 @@ export default function Home() {
       // The theme still works when storage is unavailable.
     }
   }, [theme]);
+
+  useEffect(() => { setFitMode('fill'); }, [selectedId, placementId]);
 
   useEffect(() => () => { objectUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
@@ -266,15 +269,15 @@ export default function Home() {
         : { tone: 'good', title: `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - no ratio adjustment.` };
     }
     if (fitMode === 'fit') {
-      return { tone: 'info', title: `${formatRatio(selected.width, selected.height)} fitted inside Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - the whole source remains visible; empty bands show unused canvas.${lowResolution ? ' Source resolution is also below the target.' : ''}` };
+      return { tone: 'info', title: 'Full source diagnostic - not a delivery preview', detail: `${canvasDetail} - the whole upload is visible inside the target canvas, so empty bands show the unused area.${lowResolution ? ' Source resolution is also below the target.' : ''}` };
     }
 
     if (sourceRatio > canvasSpec.ratio) {
       const sideCrop = ((1 - canvasSpec.ratio / sourceRatio) / 2) * 100;
-      return { tone: 'warn', title: `Fill crops about ${sideCrop.toFixed(1)}% from each side`, detail: `${canvasDetail} - switch to Fit to keep the full source.` };
+      return { tone: 'warn', title: `Preview crop removes about ${sideCrop.toFixed(1)}% from each side`, detail: `${canvasDetail} - centre-crop simulation only; confirm the final paid crop in Ads Manager.${lowResolution ? ' Source resolution is also below the target.' : ''}` };
     }
     const verticalCrop = ((1 - sourceRatio / canvasSpec.ratio) / 2) * 100;
-    return { tone: 'warn', title: `Fill crops about ${verticalCrop.toFixed(1)}% from top and bottom`, detail: `${canvasDetail} - switch to Fit to keep the full source.` };
+    return { tone: 'warn', title: `Preview crop removes about ${verticalCrop.toFixed(1)}% from top and bottom`, detail: `${canvasDetail} - centre-crop simulation only; confirm the final paid crop in Ads Manager.${lowResolution ? ' Source resolution is also below the target.' : ''}` };
   }, [canvasSpec, fitMode, selected]);
 
   async function addFiles(files: File[]) {
@@ -402,7 +405,7 @@ export default function Home() {
                 <span className="canvas-spec"><strong>Meta {canvasSpec.label}</strong>{canvasSpec.width} × {canvasSpec.height}</span>
               </div>
               <div className="stage-control-group stage-control-group-right">
-                <span className="button-toggle fit-toggle" aria-label="Creative framing"><button className={fitMode === 'fit' ? 'active' : ''} onClick={() => setFitMode('fit')} type="button">Fit all</button><button className={fitMode === 'fill' ? 'active' : ''} onClick={() => setFitMode('fill')} type="button">Fill frame</button></span>
+                {ratioMismatch && <span className="button-toggle source-view-toggle" aria-label="Off-ratio creative preview"><button className={fitMode === 'fill' ? 'active' : ''} onClick={() => setFitMode('fill')} type="button">Preview crop</button><button className={fitMode === 'fit' ? 'active' : ''} onClick={() => setFitMode('fit')} type="button">Show full source</button></span>}
                 <label className="safe-toggle"><input type="checkbox" checked={safeZone} onChange={(event) => setSafeZone(event.target.checked)} /><span /><em>Safe area</em></label>
               </div>
             </div>
@@ -424,7 +427,7 @@ export default function Home() {
         </section>
       </div>
 
-      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed adapts by media type</h3><p>Static Feed uses 4:5 at 1440 × 1800. Instagram Feed video uses Meta’s separate 9:16 at 1080 × 1920 target.</p></article><article><span>03</span><h3>Fit or Fill</h3><p>Fit keeps the whole source and may show empty bands. Fill covers the Meta canvas and clearly reports any crop.</p></article></div></section>
+      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed adapts by media type</h3><p>Static Feed uses 4:5 at 1440 × 1800. Instagram Feed video uses Meta’s separate 9:16 at 1080 × 1920 target.</p></article><article><span>03</span><h3>Off-ratio uploads</h3><p>The placement view previews a centre crop. Show full source is a diagnostic only; confirm the final paid crop in Ads Manager.</p></article></div></section>
       <footer className="site-footer"><span>Unofficial tool - not affiliated with or endorsed by Meta.</span><span>Uploads stay in your browser.</span></footer>
     </main>
   );
