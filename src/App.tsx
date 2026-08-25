@@ -50,7 +50,7 @@ type PreviewMode = 'phone' | 'creative';
 type FitMode = 'fit' | 'fill';
 type Theme = 'dark' | 'light';
 
-const THEME_STORAGE_KEY = 'placement-theme';
+const THEME_STORAGE_KEY = 'placement-theme-v2';
 
 type CreativeAsset = {
   id: string;
@@ -206,9 +206,9 @@ function FeedOverlay({ platform, businessName, caption, cta, promoted }: { platf
 export default function Home() {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+      return localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
     } catch {
-      return 'dark';
+      return 'light';
     }
   });
   const [assets, setAssets] = useState<CreativeAsset[]>([SAMPLE]);
