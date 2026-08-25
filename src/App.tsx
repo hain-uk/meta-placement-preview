@@ -239,7 +239,14 @@ export default function Home() {
     }
     return { ratio: placement.recommendedRatio, label: placement.recommendedLabel, width: placement.canvasWidth, height: placement.canvasHeight };
   }, [placement, selected?.kind]);
-  const ratioMismatch = Boolean(selected?.width && selected?.height && Math.abs((selected.width / selected.height) - canvasSpec.ratio) / canvasSpec.ratio >= 0.025);
+  const sourceRatio = selected?.width && selected?.height ? selected.width / selected.height : 0;
+  const ratioMismatch = Boolean(sourceRatio && Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio >= 0.025);
+  const feedCropDefault = Boolean(
+    ratioMismatch
+    && sourceRatio < canvasSpec.ratio
+    && ((selected?.kind === 'image' && placement.id.includes('feed')) || (selected?.kind === 'video' && placement.id === 'fb-feed')),
+  );
+  const facebookFeedVideoCrop = feedCropDefault && placement.id === 'fb-feed' && selected?.kind === 'video';
 
   useEffect(() => {
     const root = document.documentElement;
@@ -252,13 +259,12 @@ export default function Home() {
     }
   }, [theme]);
 
-  useEffect(() => { setFitMode('fit'); }, [selectedId, placementId]);
+  useEffect(() => { setFitMode(feedCropDefault ? 'fill' : 'fit'); }, [selectedId, placementId, feedCropDefault]);
 
   useEffect(() => () => { objectUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   const analysis = useMemo(() => {
     if (!selected?.width || !selected?.height) return { tone: 'warn', title: 'Could not read dimensions', detail: 'The file can still be previewed if your browser supports its codec.' };
-    const sourceRatio = selected.width / selected.height;
     const close = Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio < 0.025;
     const lowResolution = selected.mime !== 'image/svg+xml' && (selected.width < canvasSpec.width || selected.height < canvasSpec.height);
 
@@ -269,16 +275,23 @@ export default function Home() {
         : { tone: 'good', title: `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - no ratio adjustment.` };
     }
     if (fitMode === 'fit') {
+      if (feedCropDefault) {
+        return { tone: 'info', title: 'Full source comparison - not the standard Feed preview', detail: `${canvasDetail} - this view preserves the complete source, while the mobile Feed preview ${facebookFeedVideoCrop ? 'may mask it' : 'crops it'} to 4:5. Confirm the final framing in Ads Manager.` };
+      }
       return { tone: 'info', title: `Standard preview keeps the full ${formatRatio(selected.width, selected.height)} source`, detail: `${canvasDetail} - fitted inside the placement without Advantage+ expansion or a simulated crop; empty bands show the unused canvas.${lowResolution ? ' Source resolution is also below the target.' : ''} Confirm the final paid preview in Ads Manager.` };
     }
 
+    const cropLabel = feedCropDefault ? 'Standard Feed crop' : 'Possible crop';
+    const cropDetail = feedCropDefault
+      ? `${canvasDetail} - ${facebookFeedVideoCrop ? 'Meta may mask taller video to 4:5 in mobile Facebook Feed' : 'Meta uses a 4:5 frame for this taller Feed image'}. The centred crop is representative; confirm its position in Ads Manager.${lowResolution ? ' Source resolution is also below the target.' : ''}`
+      : `${canvasDetail} - optional centre-crop simulation, not the standard preview.${lowResolution ? ' Source resolution is also below the target.' : ''} Confirm any placement crop in Ads Manager.`;
     if (sourceRatio > canvasSpec.ratio) {
       const sideCrop = ((1 - canvasSpec.ratio / sourceRatio) / 2) * 100;
-      return { tone: 'warn', title: `Possible crop removes about ${sideCrop.toFixed(1)}% from each side`, detail: `${canvasDetail} - optional centre-crop simulation, not the standard preview.${lowResolution ? ' Source resolution is also below the target.' : ''} Confirm any placement crop in Ads Manager.` };
+      return { tone: 'warn', title: `${cropLabel} removes about ${sideCrop.toFixed(1)}% from each side`, detail: cropDetail };
     }
     const verticalCrop = ((1 - sourceRatio / canvasSpec.ratio) / 2) * 100;
-    return { tone: 'warn', title: `Possible crop removes about ${verticalCrop.toFixed(1)}% from top and bottom`, detail: `${canvasDetail} - optional centre-crop simulation, not the standard preview.${lowResolution ? ' Source resolution is also below the target.' : ''} Confirm any placement crop in Ads Manager.` };
-  }, [canvasSpec, fitMode, selected]);
+    return { tone: 'warn', title: `${cropLabel} removes about ${verticalCrop.toFixed(1)}% from top and bottom`, detail: cropDetail };
+  }, [canvasSpec, facebookFeedVideoCrop, feedCropDefault, fitMode, selected, sourceRatio]);
 
   async function addFiles(files: File[]) {
     const supported = files.filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || /\.(mov|mp4|webm)$/i.test(file.name));
@@ -405,7 +418,9 @@ export default function Home() {
                 <span className="canvas-spec"><strong>Meta {canvasSpec.label}</strong>{canvasSpec.width} × {canvasSpec.height}</span>
               </div>
               <div className="stage-control-group stage-control-group-right">
-                {ratioMismatch && <span className="button-toggle source-view-toggle" aria-label="Off-ratio display mode"><button className={fitMode === 'fit' ? 'active' : ''} onClick={() => setFitMode('fit')} type="button">Standard display</button><button className={fitMode === 'fill' ? 'active' : ''} onClick={() => setFitMode('fill')} type="button">Possible crop</button></span>}
+                {ratioMismatch && (feedCropDefault
+                  ? <span className="button-toggle source-view-toggle" aria-label="Feed framing mode"><button className={fitMode === 'fill' ? 'active' : ''} onClick={() => setFitMode('fill')} type="button">Standard Feed crop</button><button className={fitMode === 'fit' ? 'active' : ''} onClick={() => setFitMode('fit')} type="button">Show full source</button></span>
+                  : <span className="button-toggle source-view-toggle" aria-label="Off-ratio display mode"><button className={fitMode === 'fit' ? 'active' : ''} onClick={() => setFitMode('fit')} type="button">Standard display</button><button className={fitMode === 'fill' ? 'active' : ''} onClick={() => setFitMode('fill')} type="button">Possible crop</button></span>)}
                 <label className="safe-toggle"><input type="checkbox" checked={safeZone} onChange={(event) => setSafeZone(event.target.checked)} /><span /><em>Safe area</em></label>
               </div>
             </div>
@@ -427,7 +442,7 @@ export default function Home() {
         </section>
       </div>
 
-      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed adapts by media type</h3><p>Static Feed uses 4:5 at 1440 × 1800. Instagram Feed video uses Meta’s separate 9:16 at 1080 × 1920 target.</p></article><article><span>03</span><h3>Off-ratio uploads</h3><p>Standard display keeps the whole source and shows unused canvas. Possible crop is optional and does not imply that Meta always zooms the creative.</p></article></div></section>
+      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed adapts by media type</h3><p>Static Feed uses 4:5 at 1440 × 1800, so taller images crop by default. Instagram Feed video keeps Meta’s separate 9:16 target; Facebook Feed video may be masked to 4:5.</p></article><article><span>03</span><h3>Placement-specific defaults</h3><p>Stories and Reels keep the full off-ratio source without Advantage+ adjustments. Feed uses its standard crop when a source is taller than the placement frame.</p></article></div></section>
       <footer className="site-footer"><span>Unofficial tool - not affiliated with or endorsed by Meta.</span><span>Uploads stay in your browser.</span></footer>
     </main>
   );
