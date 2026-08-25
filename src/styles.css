@@ -130,9 +130,9 @@ button { color: inherit; }
 .brand small { color: var(--muted); font-size: 11px; }
 .privacy-note { justify-self: center; display: flex; align-items: center; gap: 8px; color: var(--muted-strong); font-size: 12px; font-weight: 600; }
 .privacy-dot { width: 7px; height: 7px; border-radius: 50%; background: #21a572; box-shadow: 0 0 0 4px rgba(33,165,114,.12); }
-.header-actions { justify-self: end; display: flex; align-items: center; gap: 12px; }
+.header-actions { justify-self: end; display: flex; align-items: center; margin-right: 98px; }
 .help-link { display: inline-flex; align-items: center; gap: 7px; color: var(--muted-strong); text-decoration: none; font-size: 12px; font-weight: 650; }
-.theme-toggle { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted-strong); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.theme-toggle { position: fixed; top: 14px; right: 18px; z-index: 500; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted-strong); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; transition: color .2s ease, border-color .2s ease, background-color .18s ease; }
 .theme-toggle:hover, .help-link:hover { color: var(--blue); }
 .theme-toggle:hover { border-color: var(--blue); }
 .theme-toggle:focus-visible, .help-link:focus-visible, .brand:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
@@ -387,7 +387,8 @@ body, .product-header, .control-panel, .workspace-toolbar, .drop-zone, .asset-it
 @media (max-width: 720px) {
   .product-header { position: relative; height: 62px; }
   .brand > span:last-child small, .help-link { display: none; }
-  .header-actions { gap: 0; }
+  .header-actions { display: none; }
+  .theme-toggle { top: 11px; right: 14px; padding: 0 12px; }
   .app-layout { display: flex; flex-direction: column; }
   .control-panel { border-right: 0; border-bottom: 1px solid var(--line); }
   .panel-heading h1 { font-size: 22px; }
@@ -410,8 +411,6 @@ body, .product-header, .control-panel, .workspace-toolbar, .drop-zone, .asset-it
 @media (max-width: 380px) {
   .product-header { padding: 0 14px; }
   .brand strong { font-size: 14px; }
-  .theme-toggle { width: 40px; padding: 0; }
-  .theme-toggle span { display: none; }
   .control-panel { padding: 22px 14px 28px; }
   .stage-controls { align-items: stretch; }
   .canvas-spec { display: none; }

@@ -349,14 +349,14 @@ export default function Home() {
 
   return (
     <main className="app-root">
+      <button className="theme-toggle" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
+        {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+        <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+      </button>
       <header className="product-header">
         <a className="brand" href="#top" aria-label="Meta Placement Preview home"><span className="brand-mark"><img src={`${PUBLIC_BASE}meta-logo.svg`} alt="" /></span><span><strong>Placement Preview</strong><small>for Meta</small></span></a>
         <div className="privacy-note"><span className="privacy-dot" />Files stay in your browser</div>
         <div className="header-actions">
-          <button className="theme-toggle" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-          </button>
           <a className="help-link" href="#how-it-works"><CircleHelp size={17} />How it works</a>
         </div>
       </header>
