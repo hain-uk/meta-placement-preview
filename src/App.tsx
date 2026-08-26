@@ -98,8 +98,8 @@ const ACCEPTED = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm
 const FEED_IMAGE_MIN_RATIO = 4 / 5;
 const FEED_IMAGE_MAX_RATIO = 1.91;
 const FACEBOOK_FEED_IMAGE_RATIO_TOLERANCE = 0.03;
-const IG_FEED_VIDEO_MIN_RATIO = 9 / 16;
-const IG_FEED_VIDEO_MAX_RATIO = 1.91;
+const FEED_VIDEO_MIN_RATIO = 4 / 5;
+const FEED_VIDEO_MAX_RATIO = 1.91;
 
 function formatRatio(width: number, height: number) {
   if (!width || !height) return 'Ratio unavailable';
@@ -287,8 +287,8 @@ export default function Home() {
   const isInstagramFeedImage = placement.id === 'ig-feed' && selected?.kind === 'image';
   const isFacebookFeedImage = placement.id === 'fb-feed' && selected?.kind === 'image';
   const isFeedImage = isInstagramFeedImage || isFacebookFeedImage;
-  const isInstagramFeedVideo = placement.id === 'ig-feed' && selected?.kind === 'video';
-  const isAdaptiveFeedMedia = isFeedImage || isInstagramFeedVideo;
+  const isFeedVideo = placement.id.includes('feed') && selected?.kind === 'video';
+  const isAdaptiveFeedMedia = isFeedImage || isFeedVideo;
   const nativeFeedImageRatio = Boolean(
     isFeedImage
     && sourceRatio
@@ -300,10 +300,10 @@ export default function Home() {
     && sourceRatio
     && !nativeFeedImageRatio,
   );
-  const unsupportedInstagramFeedVideoRatio = Boolean(
-    isInstagramFeedVideo
+  const unsupportedFeedVideoRatio = Boolean(
+    isFeedVideo
     && sourceRatio
-    && (sourceRatio < IG_FEED_VIDEO_MIN_RATIO || sourceRatio > IG_FEED_VIDEO_MAX_RATIO),
+    && (sourceRatio < FEED_VIDEO_MIN_RATIO || sourceRatio > FEED_VIDEO_MAX_RATIO),
   );
   const canvasSpec = useMemo(() => {
     if (isFeedImage) {
@@ -321,25 +321,26 @@ export default function Home() {
       }
       return { ratio: FEED_IMAGE_MIN_RATIO, label: '4:5', width: 1440, height: 1800 };
     }
-    if (isInstagramFeedVideo) {
-      if (sourceRatio >= IG_FEED_VIDEO_MIN_RATIO && sourceRatio <= IG_FEED_VIDEO_MAX_RATIO) {
+    if (isFeedVideo) {
+      if (sourceRatio >= FEED_VIDEO_MIN_RATIO && sourceRatio <= FEED_VIDEO_MAX_RATIO) {
         const width = 1080;
         const height = Math.ceil(width / sourceRatio);
         return { ratio: width / height, label: formatRatio(selected?.width || 0, selected?.height || 0), width, height };
       }
-      if (sourceRatio > IG_FEED_VIDEO_MAX_RATIO) {
+      if (sourceRatio > FEED_VIDEO_MAX_RATIO) {
         const width = 1080;
-        const height = Math.ceil(width / IG_FEED_VIDEO_MAX_RATIO);
+        const height = Math.ceil(width / FEED_VIDEO_MAX_RATIO);
         return { ratio: width / height, label: '1.91:1', width, height };
       }
-      return { ratio: IG_FEED_VIDEO_MIN_RATIO, label: '9:16', width: 1080, height: 1920 };
+      return { ratio: FEED_VIDEO_MIN_RATIO, label: '4:5', width: 1080, height: 1350 };
     }
     return { ratio: placement.recommendedRatio, label: placement.recommendedLabel, width: placement.canvasWidth, height: placement.canvasHeight };
-  }, [isFeedImage, isInstagramFeedVideo, nativeFeedImageRatio, placement, selected?.height, selected?.width, sourceRatio]);
+  }, [isFeedImage, isFeedVideo, nativeFeedImageRatio, placement, selected?.height, selected?.width, sourceRatio]);
   const ratioMismatch = Boolean(
     sourceRatio
     && (
       unsupportedFeedImageRatio
+      || unsupportedFeedVideoRatio
       || Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio >= 0.025
     ),
   );
@@ -347,10 +348,11 @@ export default function Home() {
     ratioMismatch
     && (
       unsupportedFeedImageRatio
-      || (sourceRatio < canvasSpec.ratio && selected?.kind === 'video' && placement.id === 'fb-feed')
+      || unsupportedFeedVideoRatio
     ),
   );
-  const facebookFeedVideoCrop = feedCropDefault && placement.id === 'fb-feed' && selected?.kind === 'video';
+  const feedVideoCrop = feedCropDefault && isFeedVideo;
+  const instagramFeedVideoCrop = feedVideoCrop && placement.id === 'ig-feed';
 
   useEffect(() => {
     const root = document.documentElement;
@@ -373,34 +375,26 @@ export default function Home() {
 
   const analysis = useMemo(() => {
     if (!selected?.width || !selected?.height) return { tone: 'warn', title: 'Could not read dimensions', detail: 'The file can still be previewed if your browser supports its codec.' };
-    const close = !unsupportedFeedImageRatio && Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio < 0.025;
+    const close = !unsupportedFeedImageRatio && !unsupportedFeedVideoRatio && Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio < 0.025;
     const lowResolution = selected.mime !== 'image/svg+xml' && (selected.width < canvasSpec.width || selected.height < canvasSpec.height);
 
     const canvasDetail = `${selected.width} × ${selected.height}px source - Meta target ${canvasSpec.width} × ${canvasSpec.height}px ${canvasSpec.label} canvas`;
-    const feedScrollNote = isAdaptiveFeedMedia && canvasSpec.ratio < 0.7 ? ' The phone preview scrolls so the Feed controls remain below the full media.' : '';
     const facebookImageCaveat = isFacebookFeedImage ? ' This preview preserves the native source ratio. Facebook may mask some Feed deliveries to 4:5 depending on device and context, so confirm final framing in Ads Manager.' : '';
-    if (unsupportedInstagramFeedVideoRatio) {
-      return {
-        tone: 'warn',
-        title: 'Outside Instagram Feed’s supported video range',
-        detail: `${formatRatio(selected.width, selected.height)} source - Instagram Feed supports 1.91:1 through 9:16. This preview fits the complete source inside the nearest supported ${canvasSpec.label} canvas without simulating Advantage+ adjustments.`,
-      };
-    }
     if (close) {
       return lowResolution
-        ? { tone: 'warn', title: `${isFacebookFeedImage ? 'Native' : 'Correct'} ${canvasSpec.label} shape, but below Meta's target resolution`, detail: `${canvasDetail} - the preview can scale it, but cannot restore missing source detail.${facebookImageCaveat}${feedScrollNote}` }
-        : { tone: 'good', title: isFacebookFeedImage ? `Native ${canvasSpec.label} Facebook Feed preview` : `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - ${isFacebookFeedImage ? 'the preview keeps the uploaded ratio.' : 'no ratio adjustment.'}${facebookImageCaveat}${feedScrollNote}` };
+        ? { tone: 'warn', title: `${isFacebookFeedImage ? 'Native' : 'Correct'} ${canvasSpec.label} shape, but below Meta's target resolution`, detail: `${canvasDetail} - the preview can scale it, but cannot restore missing source detail.${facebookImageCaveat}` }
+        : { tone: 'good', title: isFacebookFeedImage ? `Native ${canvasSpec.label} Facebook Feed preview` : `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - ${isFacebookFeedImage ? 'the preview keeps the uploaded ratio.' : 'no ratio adjustment.'}${facebookImageCaveat}` };
     }
     if (fitMode === 'fit') {
       if (feedCropDefault) {
-        return { tone: 'info', title: 'Full source comparison - not the standard Feed preview', detail: `${canvasDetail} - this view preserves the complete source, while the mobile Feed preview ${facebookFeedVideoCrop ? 'may mask it' : 'crops it'} to ${canvasSpec.label}. Confirm the final framing in Ads Manager.` };
+        return { tone: 'info', title: 'Full source comparison - not the default preview', detail: `${canvasDetail} - this view preserves the complete source, while this tool defaults to a ${canvasSpec.label} mobile Feed crop.${instagramFeedVideoCrop ? ' Meta also supports native 9:16 video in Instagram Feed.' : ''} Confirm the final framing in Ads Manager.` };
       }
       return { tone: 'info', title: `Standard preview keeps the full ${formatRatio(selected.width, selected.height)} source`, detail: `${canvasDetail} - fitted inside the placement without Advantage+ expansion or a simulated crop; empty bands show the unused canvas.${lowResolution ? ' Source resolution is also below the target.' : ''} Confirm the final paid preview in Ads Manager.` };
     }
 
     const cropLabel = feedCropDefault ? 'Standard Feed crop' : 'Possible crop';
     const cropDetail = feedCropDefault
-      ? `${canvasDetail} - ${facebookFeedVideoCrop ? 'Meta may mask taller video to 4:5 in mobile Facebook Feed' : unsupportedFeedImageRatio ? `this source falls outside the nominal 4:5 through 1.91:1 Feed range, so the preview uses the nearest ${canvasSpec.label} frame` : 'Meta uses a 4:5 frame for this taller Feed image'}. The centred crop is representative; confirm its position in Ads Manager.${lowResolution ? ' Source resolution is also below the target.' : ''}`
+      ? `${canvasDetail} - ${instagramFeedVideoCrop ? `this preview uses a conservative ${canvasSpec.label} mobile Feed frame; Meta also supports native 9:16 Instagram Feed video` : feedVideoCrop ? `this taller video is shown in a ${canvasSpec.label} mobile Feed frame` : unsupportedFeedImageRatio ? `this source falls outside the nominal 4:5 through 1.91:1 Feed range, so the preview uses the nearest ${canvasSpec.label} frame` : 'this taller Feed image is shown in a 4:5 frame'}. The centred crop is representative; confirm its position in Ads Manager.${lowResolution ? ' Source resolution is also below the target.' : ''}`
       : `${canvasDetail} - optional centre-crop simulation, not the standard preview.${lowResolution ? ' Source resolution is also below the target.' : ''} Confirm any placement crop in Ads Manager.`;
     if (sourceRatio > canvasSpec.ratio) {
       const sideCrop = ((1 - canvasSpec.ratio / sourceRatio) / 2) * 100;
@@ -408,7 +402,7 @@ export default function Home() {
     }
     const verticalCrop = ((1 - sourceRatio / canvasSpec.ratio) / 2) * 100;
     return { tone: 'warn', title: `${cropLabel} removes about ${verticalCrop.toFixed(1)}% from top and bottom`, detail: cropDetail };
-  }, [canvasSpec, facebookFeedVideoCrop, feedCropDefault, fitMode, isAdaptiveFeedMedia, isFacebookFeedImage, selected, sourceRatio, unsupportedFeedImageRatio, unsupportedInstagramFeedVideoRatio]);
+  }, [canvasSpec, feedCropDefault, feedVideoCrop, fitMode, instagramFeedVideoCrop, isFacebookFeedImage, selected, sourceRatio, unsupportedFeedImageRatio, unsupportedFeedVideoRatio]);
 
   async function addFiles(files: File[]) {
     const supported = files.filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || /\.(mov|mp4|webm)$/i.test(file.name));
@@ -570,7 +564,7 @@ export default function Home() {
         </section>
       </div>
 
-      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed images keep native shapes</h3><p>This preview keeps Facebook and Instagram Feed images from 4:5 through 1.91:1 in their uploaded ratio, so 1:1 stays square. Meta recommends 4:5 for maximum vertical space.</p></article><article><span>03</span><h3>Placement-specific defaults</h3><p>Out-of-range Feed images crop to the nearest supported shape. Facebook delivery may still mask supported images or taller video differently by device, so confirm paid framing in Ads Manager.</p></article></div></section>
+      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed media keeps native shapes</h3><p>Facebook and Instagram Feed images and videos from 4:5 through 1.91:1 keep their uploaded ratio, so 1:1 stays square. Meta recommends 4:5 for maximum vertical space.</p></article><article><span>03</span><h3>9:16 video defaults to 4:5</h3><p>This tool defaults 9:16 video to a centred 4:5 Feed crop. Meta also supports native 9:16 video in Instagram Feed, so compare the full source and confirm the final Ads Manager preview.</p></article></div></section>
       <footer className="site-footer"><span>Unofficial tool - not affiliated with or endorsed by Meta.</span><span>Uploads stay in your browser.</span></footer>
     </main>
   );
