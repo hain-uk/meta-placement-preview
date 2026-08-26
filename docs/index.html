@@ -7,8 +7,10 @@
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate" />
     <meta name="bingbot" content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate" />
     <meta name="description" content="Upload an image or video, preview Meta mobile placements, check safe areas and export a PNG mockup." />
+    <link rel="canonical" href="https://hain-uk.github.io/meta-placement-preview/" />
     <meta property="og:title" content="Meta Placement Preview" />
     <meta property="og:description" content="Upload. Check. Export. Preview images and video across Meta mobile placements." />
+    <meta property="og:url" content="https://hain-uk.github.io/meta-placement-preview/" />
     <meta property="og:image" content="https://hain-uk.github.io/meta-placement-preview/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -22,6 +24,11 @@
       try {
         if (localStorage.getItem('placement-theme-v2') === 'dark') {
           document.documentElement.removeAttribute('data-theme');
+        }
+        const currentUrl = new URL(window.location.href);
+        if (currentUrl.searchParams.has('v')) {
+          currentUrl.searchParams.delete('v');
+          history.replaceState(null, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
         }
       } catch {}
     </script>
