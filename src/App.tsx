@@ -95,8 +95,9 @@ const PLACEMENTS: Placement[] = [
 
 const CTA_OPTIONS = ['Learn more', 'Shop now', 'Get offer', 'Sign up', 'Book now'];
 const ACCEPTED = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime';
-const IG_FEED_IMAGE_MIN_RATIO = 4 / 5;
-const IG_FEED_IMAGE_MAX_RATIO = 1.91;
+const FEED_IMAGE_MIN_RATIO = 4 / 5;
+const FEED_IMAGE_MAX_RATIO = 1.91;
+const FACEBOOK_FEED_IMAGE_RATIO_TOLERANCE = 0.03;
 const IG_FEED_VIDEO_MIN_RATIO = 9 / 16;
 const IG_FEED_VIDEO_MAX_RATIO = 1.91;
 
@@ -208,7 +209,8 @@ function FeedOverlay({ platform, businessName, caption, cta, promoted }: { platf
   );
 }
 
-function InstagramFeedCard({ asset, fitMode, exportFrame, videoRef, playing, safeZone, businessName, caption, cta, promoted, mediaRatio, scrollRef }: {
+function FeedCard({ platform, asset, fitMode, exportFrame, videoRef, playing, safeZone, businessName, caption, cta, promoted, mediaRatio, scrollRef }: {
+  platform: 'Instagram' | 'Facebook';
   asset: CreativeAsset;
   fitMode: FitMode;
   exportFrame: string | null;
@@ -223,12 +225,12 @@ function InstagramFeedCard({ asset, fitMode, exportFrame, videoRef, playing, saf
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div className="ig-feed-video-screen">
+    <div className={`ig-feed-video-screen ${platform === 'Facebook' ? 'facebook-feed-card' : ''}`}>
       <div className="ig-feed-video-chrome">
         <StatusBar />
-        <div className="ig-feed-video-appbar" aria-hidden="true"><Camera /><div><Heart /><MessageCircle /></div></div>
+        <div className="ig-feed-video-appbar" aria-hidden="true">{platform === 'Instagram' ? <Camera /> : <strong className="facebook-mark">f</strong>}<div><Heart /><MessageCircle /></div></div>
       </div>
-      <div className="ig-feed-video-scroll" ref={scrollRef} role="region" tabIndex={0} aria-label="Scrollable Instagram Feed preview">
+      <div className="ig-feed-video-scroll" ref={scrollRef} role="region" tabIndex={0} aria-label={`Scrollable ${platform} Feed preview`}>
         <article className="ig-feed-video-card">
           <header className="ig-feed-video-author">
             <BusinessAvatar />
@@ -240,7 +242,7 @@ function InstagramFeedCard({ asset, fitMode, exportFrame, videoRef, playing, saf
             {safeZone && <SafeGuide feed />}
           </div>
           <div className="ig-feed-video-details">
-            <div className="ig-feed-video-actions" aria-hidden="true"><Heart /><MessageCircle /><Send /><span /><Bookmark /></div>
+            <div className="ig-feed-video-actions" aria-hidden="true"><Heart /><MessageCircle /><Send /><span />{platform === 'Instagram' ? <Bookmark /> : <Share2 />}</div>
             {promoted && <div className="ig-feed-video-cta"><strong>{cta}</strong><span>›</span></div>}
             <div className="ig-feed-video-copy"><strong>{businessName || 'Business name'}</strong> {caption || 'Add a caption…'}</div>
           </div>
@@ -276,19 +278,27 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const igFeedScrollRef = useRef<HTMLDivElement>(null);
+  const feedScrollRef = useRef<HTMLDivElement>(null);
   const objectUrls = useRef(new Set<string>());
 
   const selected = assets.find((asset) => asset.id === selectedId) || assets[0];
   const placement = PLACEMENTS.find((item) => item.id === placementId) || PLACEMENTS[0];
   const sourceRatio = selected?.width && selected?.height ? selected.width / selected.height : 0;
   const isInstagramFeedImage = placement.id === 'ig-feed' && selected?.kind === 'image';
+  const isFacebookFeedImage = placement.id === 'fb-feed' && selected?.kind === 'image';
+  const isFeedImage = isInstagramFeedImage || isFacebookFeedImage;
   const isInstagramFeedVideo = placement.id === 'ig-feed' && selected?.kind === 'video';
-  const isInstagramFeedMedia = isInstagramFeedImage || isInstagramFeedVideo;
-  const unsupportedInstagramFeedImageRatio = Boolean(
-    isInstagramFeedImage
+  const isAdaptiveFeedMedia = isFeedImage || isInstagramFeedVideo;
+  const nativeFeedImageRatio = Boolean(
+    isFeedImage
     && sourceRatio
-    && (sourceRatio < IG_FEED_IMAGE_MIN_RATIO || sourceRatio > IG_FEED_IMAGE_MAX_RATIO),
+    && sourceRatio >= FEED_IMAGE_MIN_RATIO * (isFacebookFeedImage ? 1 - FACEBOOK_FEED_IMAGE_RATIO_TOLERANCE : 1)
+    && sourceRatio <= FEED_IMAGE_MAX_RATIO * (isFacebookFeedImage ? 1 + FACEBOOK_FEED_IMAGE_RATIO_TOLERANCE : 1),
+  );
+  const unsupportedFeedImageRatio = Boolean(
+    isFeedImage
+    && sourceRatio
+    && !nativeFeedImageRatio,
   );
   const unsupportedInstagramFeedVideoRatio = Boolean(
     isInstagramFeedVideo
@@ -296,18 +306,20 @@ export default function Home() {
     && (sourceRatio < IG_FEED_VIDEO_MIN_RATIO || sourceRatio > IG_FEED_VIDEO_MAX_RATIO),
   );
   const canvasSpec = useMemo(() => {
-    if (isInstagramFeedImage) {
-      if (sourceRatio >= IG_FEED_IMAGE_MIN_RATIO && sourceRatio <= IG_FEED_IMAGE_MAX_RATIO) {
+    if (isFeedImage) {
+      if (nativeFeedImageRatio) {
         const width = 1440;
         const height = Math.ceil(width / sourceRatio);
-        return { ratio: width / height, label: formatRatio(selected?.width || 0, selected?.height || 0), width, height };
+        const withinNominalRange = sourceRatio >= FEED_IMAGE_MIN_RATIO && sourceRatio <= FEED_IMAGE_MAX_RATIO;
+        const label = withinNominalRange ? formatRatio(selected?.width || 0, selected?.height || 0) : `${sourceRatio.toFixed(2)}:1`;
+        return { ratio: width / height, label, width, height };
       }
-      if (sourceRatio > IG_FEED_IMAGE_MAX_RATIO) {
+      if (sourceRatio > FEED_IMAGE_MAX_RATIO) {
         const width = 1440;
-        const height = Math.ceil(width / IG_FEED_IMAGE_MAX_RATIO);
+        const height = Math.ceil(width / FEED_IMAGE_MAX_RATIO);
         return { ratio: width / height, label: '1.91:1', width, height };
       }
-      return { ratio: IG_FEED_IMAGE_MIN_RATIO, label: '4:5', width: 1440, height: 1800 };
+      return { ratio: FEED_IMAGE_MIN_RATIO, label: '4:5', width: 1440, height: 1800 };
     }
     if (isInstagramFeedVideo) {
       if (sourceRatio >= IG_FEED_VIDEO_MIN_RATIO && sourceRatio <= IG_FEED_VIDEO_MAX_RATIO) {
@@ -323,19 +335,18 @@ export default function Home() {
       return { ratio: IG_FEED_VIDEO_MIN_RATIO, label: '9:16', width: 1080, height: 1920 };
     }
     return { ratio: placement.recommendedRatio, label: placement.recommendedLabel, width: placement.canvasWidth, height: placement.canvasHeight };
-  }, [isInstagramFeedImage, isInstagramFeedVideo, placement, selected?.height, selected?.width, sourceRatio]);
+  }, [isFeedImage, isInstagramFeedVideo, nativeFeedImageRatio, placement, selected?.height, selected?.width, sourceRatio]);
   const ratioMismatch = Boolean(
     sourceRatio
     && (
-      unsupportedInstagramFeedImageRatio
+      unsupportedFeedImageRatio
       || Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio >= 0.025
     ),
   );
   const feedCropDefault = Boolean(
     ratioMismatch
     && (
-      unsupportedInstagramFeedImageRatio
-      || (sourceRatio < canvasSpec.ratio && selected?.kind === 'image' && placement.id === 'fb-feed')
+      unsupportedFeedImageRatio
       || (sourceRatio < canvasSpec.ratio && selected?.kind === 'video' && placement.id === 'fb-feed')
     ),
   );
@@ -355,18 +366,19 @@ export default function Home() {
   useEffect(() => { setFitMode(feedCropDefault ? 'fill' : 'fit'); }, [selectedId, placementId, feedCropDefault]);
 
   useEffect(() => {
-    if (igFeedScrollRef.current) igFeedScrollRef.current.scrollTop = 0;
+    if (feedScrollRef.current) feedScrollRef.current.scrollTop = 0;
   }, [selectedId, placementId]);
 
   useEffect(() => () => { objectUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   const analysis = useMemo(() => {
     if (!selected?.width || !selected?.height) return { tone: 'warn', title: 'Could not read dimensions', detail: 'The file can still be previewed if your browser supports its codec.' };
-    const close = !unsupportedInstagramFeedImageRatio && Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio < 0.025;
+    const close = !unsupportedFeedImageRatio && Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio < 0.025;
     const lowResolution = selected.mime !== 'image/svg+xml' && (selected.width < canvasSpec.width || selected.height < canvasSpec.height);
 
     const canvasDetail = `${selected.width} × ${selected.height}px source - Meta target ${canvasSpec.width} × ${canvasSpec.height}px ${canvasSpec.label} canvas`;
-    const feedScrollNote = isInstagramFeedMedia && canvasSpec.ratio < 0.7 ? ' The phone preview scrolls so the Feed controls remain below the full media.' : '';
+    const feedScrollNote = isAdaptiveFeedMedia && canvasSpec.ratio < 0.7 ? ' The phone preview scrolls so the Feed controls remain below the full media.' : '';
+    const facebookImageCaveat = isFacebookFeedImage ? ' This preview preserves the native source ratio. Facebook may mask some Feed deliveries to 4:5 depending on device and context, so confirm final framing in Ads Manager.' : '';
     if (unsupportedInstagramFeedVideoRatio) {
       return {
         tone: 'warn',
@@ -376,8 +388,8 @@ export default function Home() {
     }
     if (close) {
       return lowResolution
-        ? { tone: 'warn', title: `Correct ${canvasSpec.label} shape, but below Meta's target resolution`, detail: `${canvasDetail} - the preview can scale it, but cannot restore missing source detail.${feedScrollNote}` }
-        : { tone: 'good', title: `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - no ratio adjustment.${feedScrollNote}` };
+        ? { tone: 'warn', title: `${isFacebookFeedImage ? 'Native' : 'Correct'} ${canvasSpec.label} shape, but below Meta's target resolution`, detail: `${canvasDetail} - the preview can scale it, but cannot restore missing source detail.${facebookImageCaveat}${feedScrollNote}` }
+        : { tone: 'good', title: isFacebookFeedImage ? `Native ${canvasSpec.label} Facebook Feed preview` : `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - ${isFacebookFeedImage ? 'the preview keeps the uploaded ratio.' : 'no ratio adjustment.'}${facebookImageCaveat}${feedScrollNote}` };
     }
     if (fitMode === 'fit') {
       if (feedCropDefault) {
@@ -388,7 +400,7 @@ export default function Home() {
 
     const cropLabel = feedCropDefault ? 'Standard Feed crop' : 'Possible crop';
     const cropDetail = feedCropDefault
-      ? `${canvasDetail} - ${facebookFeedVideoCrop ? 'Meta may mask taller video to 4:5 in mobile Facebook Feed' : unsupportedInstagramFeedImageRatio ? `Instagram Feed supports images from 4:5 through 1.91:1, so this source uses the nearest supported ${canvasSpec.label} frame` : 'Meta uses a 4:5 frame for this taller Feed image'}. The centred crop is representative; confirm its position in Ads Manager.${lowResolution ? ' Source resolution is also below the target.' : ''}`
+      ? `${canvasDetail} - ${facebookFeedVideoCrop ? 'Meta may mask taller video to 4:5 in mobile Facebook Feed' : unsupportedFeedImageRatio ? `this source falls outside the nominal 4:5 through 1.91:1 Feed range, so the preview uses the nearest ${canvasSpec.label} frame` : 'Meta uses a 4:5 frame for this taller Feed image'}. The centred crop is representative; confirm its position in Ads Manager.${lowResolution ? ' Source resolution is also below the target.' : ''}`
       : `${canvasDetail} - optional centre-crop simulation, not the standard preview.${lowResolution ? ' Source resolution is also below the target.' : ''} Confirm any placement crop in Ads Manager.`;
     if (sourceRatio > canvasSpec.ratio) {
       const sideCrop = ((1 - canvasSpec.ratio / sourceRatio) / 2) * 100;
@@ -396,7 +408,7 @@ export default function Home() {
     }
     const verticalCrop = ((1 - sourceRatio / canvasSpec.ratio) / 2) * 100;
     return { tone: 'warn', title: `${cropLabel} removes about ${verticalCrop.toFixed(1)}% from top and bottom`, detail: cropDetail };
-  }, [canvasSpec, facebookFeedVideoCrop, feedCropDefault, fitMode, isInstagramFeedMedia, selected, sourceRatio, unsupportedInstagramFeedImageRatio, unsupportedInstagramFeedVideoRatio]);
+  }, [canvasSpec, facebookFeedVideoCrop, feedCropDefault, fitMode, isAdaptiveFeedMedia, isFacebookFeedImage, selected, sourceRatio, unsupportedFeedImageRatio, unsupportedInstagramFeedVideoRatio]);
 
   async function addFiles(files: File[]) {
     const supported = files.filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || /\.(mov|mp4|webm)$/i.test(file.name));
@@ -446,7 +458,7 @@ export default function Home() {
 
   async function exportMockup() {
     if (!previewRef.current || !selected) return;
-    const feedScroll = previewMode === 'phone' && isInstagramFeedMedia ? igFeedScrollRef.current : null;
+    const feedScroll = previewMode === 'phone' && isAdaptiveFeedMedia ? feedScrollRef.current : null;
     const previousFeedScrollTop = feedScroll?.scrollTop ?? 0;
     setExporting(true);
     try {
@@ -546,7 +558,7 @@ export default function Home() {
                   <div className="phone-screen">
                     {placement.id === 'ig-story' ? <><StatusBar /><div className="story-media-slot official-canvas"><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide />}<StoryOverlay businessName={businessName} cta={cta} promoted={promoted} /></div><StoryPhoneControls promoted={promoted} /></>
                       : placement.id === 'ig-reel' ? <><div className="reel-media-slot official-canvas"><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide />}</div><ReelsOverlay businessName={businessName} caption={caption} cta={cta} promoted={promoted} /></>
-                      : isInstagramFeedMedia ? <InstagramFeedCard asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} safeZone={safeZone} businessName={businessName} caption={caption} cta={cta} promoted={promoted} mediaRatio={fullRatio} scrollRef={igFeedScrollRef} />
+                      : isAdaptiveFeedMedia ? <FeedCard platform={placement.platform} asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} safeZone={safeZone} businessName={businessName} caption={caption} cta={cta} promoted={promoted} mediaRatio={fullRatio} scrollRef={feedScrollRef} />
                         : <><div className="feed-media-slot official-canvas"><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide feed />}</div><FeedOverlay platform={placement.platform} businessName={businessName} caption={caption} cta={cta} promoted={promoted} /></>}
                   </div>
                 </div>
@@ -558,7 +570,7 @@ export default function Home() {
         </section>
       </div>
 
-      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Instagram Feed keeps native shapes</h3><p>Images from 4:5 through 1.91:1 retain their uploaded ratio, so 1:1 stays square. Video supports native ratios from 9:16 through 1.91:1.</p></article><article><span>03</span><h3>Placement-specific defaults</h3><p>Out-of-range Instagram Feed images crop to the nearest supported shape. Facebook Feed may mask taller video to 4:5, without simulating Advantage+ adjustments.</p></article></div></section>
+      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed images keep native shapes</h3><p>This preview keeps Facebook and Instagram Feed images from 4:5 through 1.91:1 in their uploaded ratio, so 1:1 stays square. Meta recommends 4:5 for maximum vertical space.</p></article><article><span>03</span><h3>Placement-specific defaults</h3><p>Out-of-range Feed images crop to the nearest supported shape. Facebook delivery may still mask supported images or taller video differently by device, so confirm paid framing in Ads Manager.</p></article></div></section>
       <footer className="site-footer"><span>Unofficial tool - not affiliated with or endorsed by Meta.</span><span>Uploads stay in your browser.</span></footer>
     </main>
   );
