@@ -1,5 +1,6 @@
 import {
   BatteryMedium,
+  Bookmark,
   BriefcaseBusiness,
   Camera,
   Check,
@@ -94,6 +95,8 @@ const PLACEMENTS: Placement[] = [
 
 const CTA_OPTIONS = ['Learn more', 'Shop now', 'Get offer', 'Sign up', 'Book now'];
 const ACCEPTED = 'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime';
+const IG_FEED_VIDEO_MIN_RATIO = 9 / 16;
+const IG_FEED_VIDEO_MAX_RATIO = 1.91;
 
 function formatRatio(width: number, height: number) {
   if (!width || !height) return 'Ratio unavailable';
@@ -203,6 +206,48 @@ function FeedOverlay({ platform, businessName, caption, cta, promoted }: { platf
   );
 }
 
+function InstagramFeedVideoCard({ asset, fitMode, exportFrame, videoRef, playing, safeZone, businessName, caption, cta, promoted, mediaRatio, scrollRef }: {
+  asset: CreativeAsset;
+  fitMode: FitMode;
+  exportFrame: string | null;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  playing: boolean;
+  safeZone: boolean;
+  businessName: string;
+  caption: string;
+  cta: string;
+  promoted: boolean;
+  mediaRatio: string;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div className="ig-feed-video-screen">
+      <div className="ig-feed-video-chrome">
+        <StatusBar />
+        <div className="ig-feed-video-appbar" aria-hidden="true"><Camera /><div><Heart /><MessageCircle /></div></div>
+      </div>
+      <div className="ig-feed-video-scroll" ref={scrollRef} role="region" tabIndex={0} aria-label="Scrollable Instagram Feed preview">
+        <article className="ig-feed-video-card">
+          <header className="ig-feed-video-author">
+            <BusinessAvatar />
+            <span><strong>{businessName || 'Business name'}</strong>{promoted && <small>Sponsored</small>}</span>
+            <MoreHorizontal aria-hidden="true" />
+          </header>
+          <div className="ig-feed-video-media official-canvas" style={{ aspectRatio: mediaRatio }}>
+            <MediaLayer asset={asset} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />
+            {safeZone && <SafeGuide feed />}
+          </div>
+          <div className="ig-feed-video-details">
+            <div className="ig-feed-video-actions" aria-hidden="true"><Heart /><MessageCircle /><Send /><span /><Bookmark /></div>
+            {promoted && <div className="ig-feed-video-cta"><strong>{cta}</strong><span>›</span></div>}
+            <div className="ig-feed-video-copy"><strong>{businessName || 'Business name'}</strong> {caption || 'Add a caption…'}</div>
+          </div>
+        </article>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -229,17 +274,34 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const igFeedScrollRef = useRef<HTMLDivElement>(null);
   const objectUrls = useRef(new Set<string>());
 
   const selected = assets.find((asset) => asset.id === selectedId) || assets[0];
   const placement = PLACEMENTS.find((item) => item.id === placementId) || PLACEMENTS[0];
+  const sourceRatio = selected?.width && selected?.height ? selected.width / selected.height : 0;
+  const isInstagramFeedVideo = placement.id === 'ig-feed' && selected?.kind === 'video';
+  const unsupportedInstagramFeedVideoRatio = Boolean(
+    isInstagramFeedVideo
+    && sourceRatio
+    && (sourceRatio < IG_FEED_VIDEO_MIN_RATIO || sourceRatio > IG_FEED_VIDEO_MAX_RATIO),
+  );
   const canvasSpec = useMemo(() => {
-    if (placement.id === 'ig-feed' && selected?.kind === 'video') {
-      return { ratio: 9 / 16, label: '9:16', width: 1080, height: 1920 };
+    if (isInstagramFeedVideo) {
+      if (sourceRatio >= IG_FEED_VIDEO_MIN_RATIO && sourceRatio <= IG_FEED_VIDEO_MAX_RATIO) {
+        const width = 1080;
+        const height = Math.ceil(width / sourceRatio);
+        return { ratio: width / height, label: formatRatio(selected?.width || 0, selected?.height || 0), width, height };
+      }
+      if (sourceRatio > IG_FEED_VIDEO_MAX_RATIO) {
+        const width = 1080;
+        const height = Math.ceil(width / IG_FEED_VIDEO_MAX_RATIO);
+        return { ratio: width / height, label: '1.91:1', width, height };
+      }
+      return { ratio: IG_FEED_VIDEO_MIN_RATIO, label: '9:16', width: 1080, height: 1920 };
     }
     return { ratio: placement.recommendedRatio, label: placement.recommendedLabel, width: placement.canvasWidth, height: placement.canvasHeight };
-  }, [placement, selected?.kind]);
-  const sourceRatio = selected?.width && selected?.height ? selected.width / selected.height : 0;
+  }, [isInstagramFeedVideo, placement, selected?.height, selected?.width, sourceRatio]);
   const ratioMismatch = Boolean(sourceRatio && Math.abs(sourceRatio - canvasSpec.ratio) / canvasSpec.ratio >= 0.025);
   const feedCropDefault = Boolean(
     ratioMismatch
@@ -261,6 +323,10 @@ export default function Home() {
 
   useEffect(() => { setFitMode(feedCropDefault ? 'fill' : 'fit'); }, [selectedId, placementId, feedCropDefault]);
 
+  useEffect(() => {
+    if (igFeedScrollRef.current) igFeedScrollRef.current.scrollTop = 0;
+  }, [selectedId, placementId]);
+
   useEffect(() => () => { objectUrls.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   const analysis = useMemo(() => {
@@ -269,10 +335,18 @@ export default function Home() {
     const lowResolution = selected.mime !== 'image/svg+xml' && (selected.width < canvasSpec.width || selected.height < canvasSpec.height);
 
     const canvasDetail = `${selected.width} × ${selected.height}px source - Meta target ${canvasSpec.width} × ${canvasSpec.height}px ${canvasSpec.label} canvas`;
+    const feedScrollNote = isInstagramFeedVideo && canvasSpec.ratio < 0.7 ? ' The phone preview scrolls so the Feed controls remain below the full video.' : '';
+    if (unsupportedInstagramFeedVideoRatio) {
+      return {
+        tone: 'warn',
+        title: 'Outside Instagram Feed’s supported video range',
+        detail: `${formatRatio(selected.width, selected.height)} source - Instagram Feed supports 1.91:1 through 9:16. This preview fits the complete source inside the nearest supported ${canvasSpec.label} canvas without simulating Advantage+ adjustments.`,
+      };
+    }
     if (close) {
       return lowResolution
-        ? { tone: 'warn', title: `Correct ${canvasSpec.label} shape, but below Meta's target resolution`, detail: `${canvasDetail} - the preview can scale it, but cannot restore missing source detail.` }
-        : { tone: 'good', title: `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - no ratio adjustment.` };
+        ? { tone: 'warn', title: `Correct ${canvasSpec.label} shape, but below Meta's target resolution`, detail: `${canvasDetail} - the preview can scale it, but cannot restore missing source detail.${feedScrollNote}` }
+        : { tone: 'good', title: `Ready in Meta's ${canvasSpec.label} canvas`, detail: `${canvasDetail} - no ratio adjustment.${feedScrollNote}` };
     }
     if (fitMode === 'fit') {
       if (feedCropDefault) {
@@ -291,7 +365,7 @@ export default function Home() {
     }
     const verticalCrop = ((1 - sourceRatio / canvasSpec.ratio) / 2) * 100;
     return { tone: 'warn', title: `${cropLabel} removes about ${verticalCrop.toFixed(1)}% from top and bottom`, detail: cropDetail };
-  }, [canvasSpec, facebookFeedVideoCrop, feedCropDefault, fitMode, selected, sourceRatio]);
+  }, [canvasSpec, facebookFeedVideoCrop, feedCropDefault, fitMode, isInstagramFeedVideo, selected, sourceRatio, unsupportedInstagramFeedVideoRatio]);
 
   async function addFiles(files: File[]) {
     const supported = files.filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/') || /\.(mov|mp4|webm)$/i.test(file.name));
@@ -341,8 +415,14 @@ export default function Home() {
 
   async function exportMockup() {
     if (!previewRef.current || !selected) return;
+    const feedScroll = previewMode === 'phone' && isInstagramFeedVideo ? igFeedScrollRef.current : null;
+    const previousFeedScrollTop = feedScroll?.scrollTop ?? 0;
     setExporting(true);
     try {
+      if (feedScroll) {
+        feedScroll.scrollTop = 0;
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      }
       if (selected.kind === 'video') {
         const frame = captureVideoFrame();
         if (frame) { setExportFrame(frame); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); }
@@ -355,7 +435,11 @@ export default function Home() {
       anchor.click();
       setNotice(previewMode === 'creative' ? `Meta-size ${canvasSpec.width} × ${canvasSpec.height}px PNG exported.` : 'Phone mockup PNG exported.');
     } catch { setNotice('The PNG could not be exported. Try pausing the video first or use Chrome/Safari.'); }
-    finally { setExportFrame(null); setExporting(false); }
+    finally {
+      if (feedScroll) feedScroll.scrollTop = previousFeedScrollTop;
+      setExportFrame(null);
+      setExporting(false);
+    }
   }
 
   if (!selected) return null;
@@ -431,10 +515,11 @@ export default function Home() {
                   <div className="phone-screen">
                     {placement.id === 'ig-story' ? <><StatusBar /><div className="story-media-slot official-canvas"><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide />}<StoryOverlay businessName={businessName} cta={cta} promoted={promoted} /></div><StoryPhoneControls promoted={promoted} /></>
                       : placement.id === 'ig-reel' ? <><div className="reel-media-slot official-canvas"><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide />}</div><ReelsOverlay businessName={businessName} caption={caption} cta={cta} promoted={promoted} /></>
-                      : <><div className={`feed-media-slot official-canvas ${isVerticalPlacement ? 'vertical-feed-media-slot' : ''}`}><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide feed={!isVerticalPlacement} />}</div><FeedOverlay platform={placement.platform} businessName={businessName} caption={caption} cta={cta} promoted={promoted} /></>}
+                      : isInstagramFeedVideo ? <InstagramFeedVideoCard asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} safeZone={safeZone} businessName={businessName} caption={caption} cta={cta} promoted={promoted} mediaRatio={fullRatio} scrollRef={igFeedScrollRef} />
+                        : <><div className="feed-media-slot official-canvas"><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide feed />}</div><FeedOverlay platform={placement.platform} businessName={businessName} caption={caption} cta={cta} promoted={promoted} /></>}
                   </div>
                 </div>
-              ) : <div className={`creative-frame official-canvas ${isVerticalPlacement ? 'vertical-creative' : 'feed-creative'}`} style={{ aspectRatio: fullRatio }} ref={previewRef}><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide feed={!isVerticalPlacement} />}</div>}
+              ) : <div className={`creative-frame official-canvas ${isVerticalPlacement ? 'vertical-creative' : 'feed-creative'}`} style={{ aspectRatio: fullRatio }} ref={previewRef}><MediaLayer asset={selected} fitMode={fitMode} exportFrame={exportFrame} videoRef={videoRef} playing={playing} />{safeZone && <SafeGuide feed={placement.id.includes('feed')} />}</div>}
             </div>
 
             <div className={`analysis-card ${analysis.tone}`}><span className="analysis-icon">{analysis.tone === 'good' ? <Check size={15} /> : analysis.tone === 'info' ? <Radio size={15} /> : '!'}</span><div><strong>{analysis.title}</strong><p>{analysis.detail}</p></div></div>
@@ -442,7 +527,7 @@ export default function Home() {
         </section>
       </div>
 
-      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed adapts by media type</h3><p>Static Feed uses 4:5 at 1440 × 1800, so taller images crop by default. Instagram Feed video keeps Meta’s separate 9:16 target; Facebook Feed video may be masked to 4:5.</p></article><article><span>03</span><h3>Placement-specific defaults</h3><p>Stories and Reels keep the full off-ratio source without Advantage+ adjustments. Feed uses its standard crop when a source is taller than the placement frame.</p></article></div></section>
+      <section className="explainer" id="how-it-works"><span className="eyebrow">What the preview means</span><h2>Every upload is checked inside Meta’s placement canvas.</h2><div className="explain-grid"><article><span>01</span><h3>Reels + Stories: 9:16</h3><p>Images and video use Meta’s 1440 × 2560 target canvas. Uploaded dimensions never change its shape.</p></article><article><span>02</span><h3>Feed adapts by media type</h3><p>Static Feed uses 4:5 at 1440 × 1800, so taller images crop by default. Instagram Feed video accepts native ratios from 1.91:1 through 9:16, with 9:16 recommended at 1080 × 1920.</p></article><article><span>03</span><h3>Placement-specific defaults</h3><p>Instagram Feed preserves supported video framing. Facebook Feed may mask taller video to 4:5, while Stories and Reels keep their full 9:16 source without Advantage+ adjustments.</p></article></div></section>
       <footer className="site-footer"><span>Unofficial tool - not affiliated with or endorsed by Meta.</span><span>Uploads stay in your browser.</span></footer>
     </main>
   );
