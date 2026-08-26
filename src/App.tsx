@@ -32,7 +32,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { toBlob } from 'html-to-image';
 import type React from 'react';
 import {
   ChangeEvent,
@@ -130,6 +130,25 @@ function loadDimensions(src: string, kind: AssetKind) {
     video.onerror = () => resolve({ width: 0, height: 0 });
     video.src = src;
   });
+}
+
+async function waitForCaptureResources(root: HTMLElement) {
+  const images = Array.from(root.querySelectorAll('img'));
+  await Promise.all(images.map(async (image) => {
+    if (!image.complete) {
+      await new Promise<void>((resolve, reject) => {
+        image.addEventListener('load', () => resolve(), { once: true });
+        image.addEventListener('error', () => reject(new Error(`Could not load ${image.alt || 'preview image'}.`)), { once: true });
+      });
+    }
+    if (!image.naturalWidth) throw new Error(`Could not decode ${image.alt || 'preview image'}.`);
+    try {
+      await image.decode();
+    } catch {
+      // A fully loaded image is still safe to capture when decode() is unavailable.
+    }
+  }));
+  await document.fonts?.ready;
 }
 
 function StatusBar() {
@@ -464,14 +483,29 @@ export default function Home() {
         const frame = captureVideoFrame();
         if (frame) { setExportFrame(frame); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); }
       }
+      await waitForCaptureResources(previewRef.current);
       const pixelRatio = previewMode === 'creative' ? canvasSpec.width / previewRef.current.clientWidth : 3;
-      const dataUrl = await toPng(previewRef.current, { cacheBust: true, pixelRatio, backgroundColor: previewMode === 'phone' ? '#101114' : '#000000' });
+      const blob = await toBlob(previewRef.current, {
+        cacheBust: !selected.src.startsWith('blob:') && !selected.src.startsWith('data:'),
+        pixelRatio,
+        backgroundColor: previewMode === 'phone' ? '#101114' : '#000000',
+      });
+      if (!blob) throw new Error('The browser did not create a PNG file.');
+      const downloadUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.download = `${safeFilename(selected.name)}-${placement.id}-${previewMode}.png`;
-      anchor.href = dataUrl;
+      anchor.href = downloadUrl;
+      document.body.appendChild(anchor);
       anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1_000);
       setNotice(previewMode === 'creative' ? `Meta-size ${canvasSpec.width} × ${canvasSpec.height}px PNG exported.` : 'Phone mockup PNG exported.');
-    } catch { setNotice('The PNG could not be exported. Try pausing the video first or use Chrome/Safari.'); }
+    } catch (error) {
+      console.error('PNG export failed', error);
+      setNotice(selected.kind === 'video'
+        ? 'The PNG could not be exported. Pause the video and try again.'
+        : 'The PNG could not be exported. Wait for the preview to finish loading and try again.');
+    }
     finally {
       if (feedScroll) feedScroll.scrollTop = previousFeedScrollTop;
       setExportFrame(null);
